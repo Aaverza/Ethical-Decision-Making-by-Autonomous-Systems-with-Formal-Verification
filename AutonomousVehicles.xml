@@ -1,0 +1,1684 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+	<declaration>// Channels and controllers
+chan Outcome, OutcomeDone, Sensor, DamageVerification, Emergency, EthicalSubController, SubDec, ScenarioSelect, ScenarioSelected;
+chan B_Calc, B_EndCalc, B_Scan, B_EndScan;
+chan S_Calc, S_EndCalc, S_Scan, S_EndScan;
+chan T_Calc, T_EndCalc, T_Scan, T_EndScan;
+
+//The no_scan variable controls if the data from the sensors changes during execution. true = the values don't change, false=the values can change
+bool no_scan = true;
+
+chan VehicleSync, processData, SDVspeed, SpeedSet, perception, proceed;
+bool TurnDone = false, SharpDone = false, BrakeDone = false; //these are just control variables to make sure a verification isn't done twice
+int Action = 4; //1=Brake, 2=Turn, 3=Sharp turn, 4=Proceed
+//this is used to check if a collision between two cars leads to injuries or not. is the stopping distance of the car behind is 15m greter than the SDV, it's considered injury
+const int DistDamage = -15; 
+
+//Damage Calculators
+int B_Injuries=0, B_SDV_Damage=0;
+int S_Injuries=0, S_SDV_Damage=0;
+int T_Injuries=0, T_SDV_Damage=0;
+int Injuries=0, SDV_Damage=0; //the 6 variables above represent the outcome calculation, the final decisiom made is passed into the Injureis and SDV_damage variables
+//SDV----------------------------------------------------------------------------------------
+    int SDV_speed = 50, //Self Driving Vehicle Speed
+        SDV_Npass = 2; //Number of Passengers
+    int SDV_StopDist = 36;  //stopping distance (calculated when changing the speed)
+
+//Brake Data --------------------------------------------------------------------------------
+    //Pedestrian
+    int B_Pedestrians = 0, //Number of Pedestrians
+        B_Pedestrian_dist = 20; // Distance from the SDV
+    //Car
+    bool B_Car = false; //If a car exists
+    int  B_Car_dist = 15, //car's distance from the SDV
+         B_Car_speed = 50, //Car's speed
+         B_Car_Npass = 3;  //Car's number of passengers
+    int  B_Car_StopDist=70; //Car's stopping distance
+    //Object
+    bool B_Object = false, //If an object exists
+         B_Object_resistance = false; //it's resistance. True = means it's a rigid object such as a tree or a lamp post. False = objects such as a bush or a wooden fence
+    int  B_Object_dist = 0; //object's distance from the self driving vehicle
+
+//SharpTurn Data ----------------------------------------------------------------------------
+    //Pedestrian
+    int S_Pedestrians = 0,
+        S_Pedestrian_dist = 30;
+    //Car
+    bool S_Car = false;
+    int  S_Car_dist = 0,
+         S_Car_speed = 50,
+         S_Car_Npass = 0;         
+    int  S_Car_StopDist = 70;
+    //Object
+    bool S_Object = false,
+         S_Object_resistance = true;
+    int  S_Object_dist = 30;
+
+//Turn Data --------------------------------------------------------------------------------
+    //Pedestrian
+    int T_Pedestrians = 0,
+        T_Pedestrian_dist = 0;
+    //Car
+    bool T_Car = false;
+    int  T_Car_dist = 40,
+         T_Car_speed = 50,
+         T_Car_Npass = 5;      
+    int  T_Car_StopDist=70;
+    //Object
+    bool T_Object = false,
+         T_Object_resistance = false;
+    int  T_Object_dist = 0;</declaration>
+	<template>
+		<name>Perception</name>
+		<location id="id0" x="-382" y="-170">
+			<name x="-476" y="-204">SensorController</name>
+		</location>
+		<location id="id1" x="-195" y="-170">
+			<name x="-205" y="-204">Process</name>
+		</location>
+		<location id="id2" x="-272" y="-332">
+			<name x="-323" y="-315">VehicleInterface</name>
+		</location>
+		<location id="id3" x="-263" y="-9">
+			<name x="-289" y="8">EthicalDec</name>
+		</location>
+		<location id="id4" x="-892" y="-170">
+			<name x="-909" y="-204">Start</name>
+		</location>
+		<location id="id5" x="-722" y="-170">
+			<name x="-756" y="-204">SDV_speed</name>
+		</location>
+		<location id="id6" x="-578" y="-170">
+			<name x="-629" y="-204">SensorStart</name>
+		</location>
+		<init ref="id4"/>
+		<transition>
+			<source ref="id5"/>
+			<target ref="id6"/>
+			<label kind="synchronisation" x="-688" y="-170">SpeedSet?</label>
+		</transition>
+		<transition>
+			<source ref="id4"/>
+			<target ref="id5"/>
+			<label kind="synchronisation" x="-850" y="-170">SDVspeed!</label>
+		</transition>
+		<transition>
+			<source ref="id6"/>
+			<target ref="id0"/>
+			<label kind="synchronisation" x="-510" y="-170">Sensor!</label>
+		</transition>
+		<transition>
+			<source ref="id2"/>
+			<target ref="id6"/>
+			<label kind="synchronisation" x="-459" y="-289">perception?</label>
+		</transition>
+		<transition>
+			<source ref="id3"/>
+			<target ref="id6"/>
+			<label kind="synchronisation" x="-442" y="-60">perception?</label>
+		</transition>
+		<transition>
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="synchronisation" x="-331" y="-196">processData?</label>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id2"/>
+			<label kind="guard" x="-229" y="-289">B_Pedestrians == 0</label>
+			<label kind="synchronisation" x="-221" y="-255">proceed!</label>
+		</transition>
+		<transition>
+			<source ref="id1"/>
+			<target ref="id3"/>
+			<label kind="guard" x="-221" y="-110">B_Pedestrians &gt; 0</label>
+			<label kind="synchronisation" x="-229" y="-68">Emergency!</label>
+		</transition>
+	</template>
+	<template>
+		<name>SensorController</name>
+		<location id="id7" x="-255" y="-527">
+			<name x="-306" y="-561">SensorStart</name>
+		</location>
+		<location id="id8" x="-493" y="-382">
+			<name x="-545" y="-365">SideSensorLeft</name>
+		</location>
+		<location id="id9" x="-8" y="-382">
+			<name x="8" y="-399">SideSensorRight</name>
+		</location>
+		<location id="id10" x="-255" y="-195">
+			<name x="-314" y="-178">FrontBackSensors</name>
+		</location>
+		<location id="id11" x="-493" y="-527">
+		</location>
+		<location id="id12" x="-493" y="-195">
+		</location>
+		<location id="id13" x="-8" y="-195">
+		</location>
+		<location id="id14" x="-8" y="-527">
+		</location>
+		<location id="id15" x="-255" y="-476">
+			<name x="-280" y="-459">Scenarios</name>
+		</location>
+		<init ref="id7"/>
+		<transition>
+			<source ref="id15"/>
+			<target ref="id14"/>
+			<label kind="synchronisation" x="-237" y="-493">ScenarioSelected?</label>
+			<nail x="-102" y="-476"/>
+		</transition>
+		<transition>
+			<source ref="id11"/>
+			<target ref="id15"/>
+			<label kind="guard" x="-399" y="-518">no_scan == true</label>
+			<label kind="synchronisation" x="-391" y="-501">ScenarioSelect!</label>
+			<nail x="-408" y="-476"/>
+		</transition>
+		<transition>
+			<source ref="id14"/>
+			<target ref="id7"/>
+			<label kind="synchronisation" x="-170" y="-544">processData!</label>
+		</transition>
+		<transition>
+			<source ref="id8"/>
+			<target ref="id12"/>
+			<label kind="synchronisation" x="-484" y="-306">S_EndScan?</label>
+		</transition>
+		<transition>
+			<source ref="id9"/>
+			<target ref="id14"/>
+			<label kind="synchronisation" x="-93" y="-459">T_EndScan?</label>
+		</transition>
+		<transition>
+			<source ref="id10"/>
+			<target ref="id13"/>
+			<label kind="synchronisation" x="-178" y="-221">B_EndScan?</label>
+		</transition>
+		<transition>
+			<source ref="id12"/>
+			<target ref="id10"/>
+			<label kind="synchronisation" x="-408" y="-221">B_Scan!</label>
+		</transition>
+		<transition>
+			<source ref="id13"/>
+			<target ref="id9"/>
+			<label kind="synchronisation" x="-68" y="-306">T_Scan!</label>
+		</transition>
+		<transition>
+			<source ref="id11"/>
+			<target ref="id8"/>
+			<label kind="guard" x="-484" y="-459">no_scan == false</label>
+			<label kind="synchronisation" x="-484" y="-476">S_Scan!</label>
+		</transition>
+		<transition>
+			<source ref="id7"/>
+			<target ref="id11"/>
+			<label kind="synchronisation" x="-391" y="-544">Sensor?</label>
+		</transition>
+	</template>
+	<template>
+		<name>SensorInterface</name>
+		<parameter>int &amp;Pedestrians, int &amp;Pedestrian_dist, bool &amp;Object, bool &amp;Object_resistance, int &amp;Object_dist, bool &amp;Car, int &amp;Car_dist, int &amp;Car_Npass, int &amp;Car_speed, int &amp;Car_StopDist, chan &amp;Scan, chan &amp;EndScan</parameter>
+		<location id="id16" x="-374" y="-127">
+			<name x="-384" y="-161">SensorStart</name>
+		</location>
+		<location id="id17" x="-688" y="127">
+			<name x="-739" y="93">ObjectS</name>
+		</location>
+		<location id="id18" x="-238" y="127">
+			<name x="-272" y="127">CarS</name>
+		</location>
+		<location id="id19" x="-688" y="-127">
+			<name x="-671" y="-127">PedestrianS</name>
+		</location>
+		<location id="id20" x="-374" y="-25">
+			<name x="-365" y="-51">SensorInterface</name>
+		</location>
+		<location id="id21" x="-34" y="-25">
+			<name x="-42" y="-8">StoppingDistance</name>
+		</location>
+		<init ref="id16"/>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id21"/>
+			<label kind="guard" x="-59" y="136">Car==true &amp;&amp;
+Car_Npass &gt; 0 &amp;&amp;
+Car_dist &gt; 10 &amp;&amp;
+Car_speed &gt;= 20</label>
+			<nail x="-34" y="127"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id18"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id17"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id21"/>
+			<label kind="guard" x="-25" y="68">Car==false</label>
+			<label kind="assignment" x="51" y="68">Car_Npass = 0,
+Car_speed = 0,
+Car_dist = 0</label>
+			<nail x="-34" y="127"/>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-246" y="-51">Car_speed==70</label>
+			<label kind="assignment" x="-144" y="-51">Car_StopDist=118</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-246" y="-68">Car_speed==60</label>
+			<label kind="assignment" x="-144" y="-68">Car_StopDist=92</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-246" y="-85">Car_speed==50</label>
+			<label kind="assignment" x="-144" y="-85">Car_StopDist=70</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-246" y="-102">Car_speed==40</label>
+			<label kind="assignment" x="-144" y="-102">Car_StopDist=50</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-246" y="-119">Car_speed==30</label>
+			<label kind="assignment" x="-144" y="-119">Car_StopDist=33</label>
+		</transition>
+		<transition>
+			<source ref="id21"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-246" y="-136">Car_speed==20</label>
+			<label kind="assignment" x="-144" y="-136">Car_StopDist=19</label>
+		</transition>
+		<transition>
+			<source ref="id20"/>
+			<target ref="id16"/>
+			<label kind="synchronisation" x="-348" y="-136">EndScan!</label>
+		</transition>
+		<transition>
+			<source ref="id16"/>
+			<target ref="id19"/>
+			<label kind="synchronisation" x="-467" y="-144">Scan?</label>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id17"/>
+			<label kind="assignment" x="-654" y="84">Object_resistance=false</label>
+			<nail x="-645" y="84"/>
+			<nail x="-671" y="67"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id17"/>
+			<label kind="assignment" x="-628" y="127">Object_resistance=true</label>
+			<nail x="-620" y="127"/>
+			<nail x="-628" y="101"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id17"/>
+			<label kind="guard" x="-637" y="153">Object_dist &gt; 10</label>
+			<label kind="assignment" x="-637" y="170">Object_dist-=10</label>
+			<nail x="-645" y="169"/>
+			<nail x="-628" y="144"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id17"/>
+			<label kind="guard" x="-730" y="187">Object_dist &lt; 40</label>
+			<label kind="assignment" x="-730" y="204">Object_dist+=10</label>
+			<nail x="-688" y="195"/>
+			<nail x="-662" y="186"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id17"/>
+			<label kind="assignment" x="-824" y="169">Object=false</label>
+			<nail x="-756" y="152"/>
+			<nail x="-739" y="186"/>
+		</transition>
+		<transition>
+			<source ref="id17"/>
+			<target ref="id17"/>
+			<label kind="assignment" x="-841" y="101">Object=true</label>
+			<nail x="-773" y="135"/>
+			<nail x="-764" y="101"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-374" y="135">Car_speed &gt; 20</label>
+			<label kind="assignment" x="-374" y="152">Car_speed-=10</label>
+			<nail x="-255" y="177"/>
+			<nail x="-263" y="160"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-297" y="178">Car_speed &lt; 70</label>
+			<label kind="assignment" x="-297" y="195">Car_speed+=10</label>
+			<nail x="-204" y="178"/>
+			<nail x="-178" y="161"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-161" y="118">Car_Npass &gt; 1</label>
+			<label kind="assignment" x="-162" y="135">Car_Npass--</label>
+			<nail x="-170" y="127"/>
+			<nail x="-170" y="143"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-170" y="84">Car_Npass &lt; 8</label>
+			<label kind="assignment" x="-170" y="101">Car_Npass++</label>
+			<nail x="-187" y="101"/>
+			<nail x="-170" y="118"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-229" y="50">Car_dist &gt; 10</label>
+			<label kind="assignment" x="-229" y="67">Car_dist-=10</label>
+			<nail x="-246" y="59"/>
+			<nail x="-229" y="67"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-289" y="16">Car_dist &lt; 120</label>
+			<label kind="assignment" x="-289" y="33">Car_dist+=10</label>
+			<nail x="-297" y="59"/>
+			<nail x="-263" y="59"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="assignment" x="-366" y="50">Car=false</label>
+			<nail x="-340" y="84"/>
+			<nail x="-306" y="76"/>
+		</transition>
+		<transition>
+			<source ref="id18"/>
+			<target ref="id18"/>
+			<label kind="assignment" x="-408" y="84">Car=true</label>
+			<nail x="-365" y="118"/>
+			<nail x="-340" y="101"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-688" y="-43">Pedestrians &gt; 0</label>
+			<label kind="assignment" x="-688" y="-26">Pedestrians--</label>
+			<nail x="-663" y="-51"/>
+			<nail x="-638" y="-68"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-671" y="-229">Pedestrian_dist &gt; 10</label>
+			<label kind="assignment" x="-671" y="-212">Pedestrian_dist-=10</label>
+			<nail x="-680" y="-195"/>
+			<nail x="-646" y="-178"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-850" y="-212">Pedestrian_dist &lt; 40</label>
+			<label kind="assignment" x="-850" y="-195">Pedestrian_dist+=10</label>
+			<nail x="-748" y="-161"/>
+			<nail x="-714" y="-186"/>
+		</transition>
+		<transition>
+			<source ref="id19"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-849" y="-102">Pedestrians &lt; 10</label>
+			<label kind="assignment" x="-849" y="-85">Pedestrians++</label>
+			<nail x="-739" y="-77"/>
+			<nail x="-748" y="-110"/>
+		</transition>
+	</template>
+	<template>
+		<name>Scenario</name>
+		<declaration>
+void ScenarioPicker(int Number) {
+    if (Number == 1){ //Scenario 1 = should Turn. No deadlock
+        //SDV
+	    SDV_speed = 50; 
+        SDV_Npass = 2; 
+	    SDV_StopDist = 36;  
+
+    //Brake Data 
+        //Pedestrian
+    	B_Pedestrians = 1; 
+    	B_Pedestrian_dist = 20; 
+        //Car
+    	B_Car = true; 
+    	B_Car_dist = 15; 
+    	B_Car_speed = 50; 
+    	B_Car_Npass = 3;  	
+    	B_Car_StopDist=70; 
+        //Object
+    	B_Object = false; 
+	    B_Object_resistance = false;
+   	    B_Object_dist = 0;
+    //SharpTurn Data 
+        //Pedestrian
+    	S_Pedestrians = 2;
+    	S_Pedestrian_dist = 30;
+        //Car
+    	S_Car = false;
+    	S_Car_dist = 0;
+    	S_Car_speed = 0;
+    	S_Car_Npass = 0;         
+    	S_Car_StopDist = 0;
+        //Object
+    	S_Object = true;
+    	S_Object_resistance = true;
+    	S_Object_dist = 30;
+    
+    //Turn Data 
+        //Pedestrian
+    	T_Pedestrians = 0;
+    	T_Pedestrian_dist = 0;
+        //Car
+    	T_Car = true;
+    	T_Car_dist = 40;
+        T_Car_speed = 50;
+    	T_Car_Npass = 5;      
+    	T_Car_StopDist=70;
+        //Object
+    	T_Object = false;
+        T_Object_resistance = false;
+    	T_Object_dist = 0;
+    }
+
+    else if (Number == 2){ //Scenario 2 = should Brake. Deadlock
+        //SDV
+	    SDV_speed = 50; 
+        SDV_Npass = 1; 
+	    SDV_StopDist = 36;  
+
+    //Brake Data 
+        //Pedestrian
+    	B_Pedestrians = 1; 
+    	B_Pedestrian_dist = 20; 
+        //Car
+    	B_Car = true; 
+    	B_Car_dist = 60; 
+    	B_Car_speed = 50; 
+    	B_Car_Npass = 2;  	
+    	B_Car_StopDist=70; 
+        //Object
+    	B_Object = false; 
+	    B_Object_resistance = false;
+   	    B_Object_dist = 0;
+    //SharpTurn Data 
+        //Pedestrian
+    	S_Pedestrians = 4;
+    	S_Pedestrian_dist = 10;
+        //Car
+    	S_Car = false;
+    	S_Car_dist = 0;
+    	S_Car_speed = 0;
+    	S_Car_Npass = 0;         
+    	S_Car_StopDist = 0;
+        //Object
+    	S_Object = false;
+    	S_Object_resistance = false;
+    	S_Object_dist = 0;
+    
+    //Turn Data 
+        //Pedestrian
+    	T_Pedestrians = 0;
+    	T_Pedestrian_dist = 0;
+        //Car
+    	T_Car = true;
+    	T_Car_dist = 10;
+        T_Car_speed = 50;
+    	T_Car_Npass = 5;      
+    	T_Car_StopDist=70;
+        //Object
+    	T_Object = false;
+        T_Object_resistance = false;
+    	T_Object_dist = 0;
+    }
+
+    else if (Number == 3){ //Scenario 3 = should SharpTurn. Deadlock
+        //SDV
+	    SDV_speed = 50; 
+        SDV_Npass = 1; 
+	    SDV_StopDist = 36;  
+
+    //Brake Data 
+        //Pedestrian
+    	B_Pedestrians = 3; 
+    	B_Pedestrian_dist = 30; 
+        //Car
+    	B_Car = true; 
+    	B_Car_dist = 60; 
+    	B_Car_speed = 50; 
+    	B_Car_Npass = 2;  	
+    	B_Car_StopDist=70; 
+        //Object
+    	B_Object = false; 
+	    B_Object_resistance = false;
+   	    B_Object_dist = 0;
+    //SharpTurn Data 
+        //Pedestrian
+    	S_Pedestrians = 0;
+    	S_Pedestrian_dist = 10;
+        //Car
+    	S_Car = false;
+    	S_Car_dist = 0;
+    	S_Car_speed = 0;
+    	S_Car_Npass = 0;         
+    	S_Car_StopDist = 0;
+        //Object
+    	S_Object = true;
+    	S_Object_resistance = false;
+    	S_Object_dist = 35;
+    
+    //Turn Data 
+        //Pedestrian
+    	T_Pedestrians = 0;
+    	T_Pedestrian_dist = 0;
+        //Car
+    	T_Car = true;
+    	T_Car_dist = 10;
+        T_Car_speed = 50;
+    	T_Car_Npass = 5;      
+    	T_Car_StopDist=70;
+        //Object
+    	T_Object = false;
+        T_Object_resistance = false;
+    	T_Object_dist = 0;
+    }
+
+    else if (Number == 4){ //Scenario 4 = should Proceed
+        //SDV
+	    SDV_speed = 30; 
+        SDV_Npass = 3; 
+	    SDV_StopDist = 13;  
+
+    //Brake Data 
+        //Pedestrian
+    	B_Pedestrians = 0; 
+    	B_Pedestrian_dist = 0; 
+        //Car
+    	B_Car = true; 
+    	B_Car_dist = 30; 
+    	B_Car_speed = 50; 
+    	B_Car_Npass = 3;  	
+    	B_Car_StopDist=70; 
+        //Object
+    	B_Object = false; 
+	    B_Object_resistance = false;
+   	    B_Object_dist = 0;
+    //SharpTurn Data 
+        //Pedestrian
+    	S_Pedestrians = 2;
+    	S_Pedestrian_dist = 10;
+        //Car
+    	S_Car = false;
+    	S_Car_dist = 0;
+    	S_Car_speed = 0;
+    	S_Car_Npass = 0;         
+    	S_Car_StopDist = 0;
+        //Object
+    	S_Object = false;
+    	S_Object_resistance = false;
+    	S_Object_dist = 0;
+    
+    //Turn Data 
+        //Pedestrian
+    	T_Pedestrians = 0;
+    	T_Pedestrian_dist = 0;
+        //Car
+    	T_Car = true;
+    	T_Car_dist = 30;
+        T_Car_speed = 50;
+    	T_Car_Npass = 3;      
+    	T_Car_StopDist=70;
+        //Object
+    	T_Object = false;
+        T_Object_resistance = false;
+    	T_Object_dist = 0;
+    }
+
+    else if (Number == 5){ //Scenario 5 = Emergency Situation, all decisions lead to the same outcome
+        //SDV
+	    SDV_speed = 30; 
+        SDV_Npass = 2; 
+	    SDV_StopDist = 13;  
+
+    //Brake Data 
+        //Pedestrian
+    	B_Pedestrians = 1; 
+    	B_Pedestrian_dist = 20; 
+        //Car
+    	B_Car = true; 
+    	B_Car_dist = 20; 
+    	B_Car_speed = 30; 
+    	B_Car_Npass = 3;  	
+    	B_Car_StopDist=33; 
+        //Object
+    	B_Object = false; 
+	    B_Object_resistance = false;
+   	    B_Object_dist = 0;
+    //SharpTurn Data 
+        //Pedestrian
+    	S_Pedestrians = 0;
+    	S_Pedestrian_dist = 0;
+        //Car
+    	S_Car = false;
+    	S_Car_dist = 0;
+    	S_Car_speed = 0;
+    	S_Car_Npass = 0;         
+    	S_Car_StopDist = 0;
+        //Object
+    	S_Object = false;
+    	S_Object_resistance = false;
+    	S_Object_dist = 0;
+    
+    //Turn Data 
+        //Pedestrian
+    	T_Pedestrians = 0;
+    	T_Pedestrian_dist = 0;
+        //Car
+    	T_Car = true;
+    	T_Car_dist = 20;
+        T_Car_speed = 30;
+    	T_Car_Npass = 1;      
+    	T_Car_StopDist=33;
+        //Object
+    	T_Object = false;
+        T_Object_resistance = false;
+    	T_Object_dist = 0;
+    }
+
+    else if (Number == 6){ //Scenario 6 = should sharp turn after SDV damage
+        //SDV
+	    SDV_speed = 50; 
+        SDV_Npass = 1; 
+	    SDV_StopDist = 36;  
+
+    //Brake Data 
+        //Pedestrian
+    	B_Pedestrians = 3; 
+    	B_Pedestrian_dist = 20; 
+        //Car
+    	B_Car = false; 
+    	B_Car_dist = 0; 
+    	B_Car_speed = 0; 
+    	B_Car_Npass = 0;  	
+    	B_Car_StopDist= 0; 
+        //Object
+    	B_Object = false; 
+	    B_Object_resistance = false;
+   	    B_Object_dist = 0;
+    //SharpTurn Data 
+        //Pedestrian
+    	S_Pedestrians = 0;
+    	S_Pedestrian_dist = 0;
+        //Car
+    	S_Car = false;
+    	S_Car_dist = 0;
+    	S_Car_speed = 0;
+    	S_Car_Npass = 0;         
+    	S_Car_StopDist = 0;
+        //Object
+    	S_Object = true;
+    	S_Object_resistance = true;
+    	S_Object_dist = 30;
+    
+    //Turn Data 
+        //Pedestrian
+    	T_Pedestrians = 0;
+    	T_Pedestrian_dist = 0;
+        //Car
+    	T_Car = true;
+    	T_Car_dist = 40;
+        T_Car_speed = 50;
+    	T_Car_Npass = 5;      
+    	T_Car_StopDist=70;
+        //Object
+    	T_Object = false;
+        T_Object_resistance = false;
+    	T_Object_dist = 0;
+    }
+}</declaration>
+		<location id="id22" x="238" y="204">
+			<name x="228" y="170">Scenario6</name>
+		</location>
+		<location id="id23" x="238" y="-34">
+			<name x="228" y="-68">Scenario3</name>
+		</location>
+		<location id="id24" x="238" y="51">
+			<name x="228" y="17">Scenario4</name>
+		</location>
+		<location id="id25" x="229" y="-229">
+			<name x="219" y="-263">Scenario1</name>
+		</location>
+		<location id="id26" x="238" y="-127">
+			<name x="228" y="-161">Scenario2</name>
+		</location>
+		<location id="id27" x="-136" y="-34">
+			<name x="-127" y="-59">ScenarioChoice</name>
+		</location>
+		<location id="id28" x="-331" y="-34">
+			<name x="-341" y="-68">ScenarioStart</name>
+		</location>
+		<location id="id29" x="238" y="144">
+			<name x="228" y="110">Scenario5</name>
+		</location>
+		<init ref="id28"/>
+		<transition>
+			<source ref="id22"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="256" y="187">ScenarioSelected!</label>
+			<nail x="459" y="204"/>
+			<nail x="459" y="246"/>
+			<nail x="-331" y="246"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id22"/>
+			<label kind="assignment" x="-118" y="204">ScenarioPicker(6)</label>
+			<nail x="-136" y="204"/>
+		</transition>
+		<transition>
+			<source ref="id29"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="256" y="127">ScenarioSelected!</label>
+			<nail x="459" y="144"/>
+			<nail x="459" y="246"/>
+			<nail x="-331" y="246"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id29"/>
+			<label kind="assignment" x="-118" y="144">ScenarioPicker(5)</label>
+			<nail x="-136" y="144"/>
+		</transition>
+		<transition>
+			<source ref="id23"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="256" y="-51">ScenarioSelected!</label>
+			<nail x="459" y="-34"/>
+			<nail x="459" y="246"/>
+			<nail x="-331" y="246"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id23"/>
+			<label kind="assignment" x="-118" y="-34">ScenarioPicker(3)</label>
+		</transition>
+		<transition>
+			<source ref="id25"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="256" y="-246">ScenarioSelected!</label>
+			<nail x="459" y="-229"/>
+			<nail x="459" y="246"/>
+			<nail x="-331" y="246"/>
+		</transition>
+		<transition>
+			<source ref="id24"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="255" y="51">ScenarioSelected!</label>
+			<nail x="459" y="51"/>
+			<nail x="459" y="246"/>
+			<nail x="-331" y="246"/>
+		</transition>
+		<transition>
+			<source ref="id26"/>
+			<target ref="id28"/>
+			<label kind="synchronisation" x="256" y="-144">ScenarioSelected!</label>
+			<nail x="459" y="-127"/>
+			<nail x="459" y="246"/>
+			<nail x="-331" y="246"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id24"/>
+			<label kind="assignment" x="-127" y="60">ScenarioPicker(4)</label>
+			<nail x="-136" y="51"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id25"/>
+			<label kind="assignment" x="-118" y="-229">ScenarioPicker(1)</label>
+			<nail x="-136" y="-229"/>
+		</transition>
+		<transition>
+			<source ref="id27"/>
+			<target ref="id26"/>
+			<label kind="assignment" x="-118" y="-127">ScenarioPicker(2)</label>
+			<nail x="-136" y="-127"/>
+		</transition>
+		<transition>
+			<source ref="id28"/>
+			<target ref="id27"/>
+			<label kind="synchronisation" x="-297" y="-34">ScenarioSelect?</label>
+		</transition>
+	</template>
+	<template>
+		<name>SDV_Speed</name>
+		<declaration>void SDVStoppingDistCheck(){ //function that determines the stopping dist of the SDV based on speed
+    if (SDV_speed == 20)
+        SDV_StopDist = 6;
+    else if (SDV_speed == 30)
+        SDV_StopDist = 13;
+    else if (SDV_speed == 40)
+        SDV_StopDist = 23;
+    else if (SDV_speed == 50)
+        SDV_StopDist = 36;
+    else if (SDV_speed == 60)
+        SDV_StopDist = 52;
+    else if (SDV_speed == 70)
+        SDV_StopDist = 71;
+}</declaration>
+		<location id="id30" x="-59" y="59">
+			<name x="-118" y="68">StoppingDistanceSet</name>
+		</location>
+		<location id="id31" x="-153" y="-85">
+			<name x="-187" y="-59">SDV</name>
+		</location>
+		<location id="id32" x="-68" y="-178">
+			<name x="-119" y="-212">SDV_Speed_Start</name>
+		</location>
+		<location id="id33" x="17" y="-85">
+		</location>
+		<init ref="id32"/>
+		<transition>
+			<source ref="id30"/>
+			<target ref="id33"/>
+			<label kind="assignment" x="-25" y="-8">SDVStoppingDistCheck()</label>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id33"/>
+			<label kind="guard" x="-119" y="-102">no_scan == true</label>
+		</transition>
+		<transition>
+			<source ref="id33"/>
+			<target ref="id32"/>
+			<label kind="synchronisation" x="-42" y="-148">SpeedSet!</label>
+		</transition>
+		<transition>
+			<source ref="id32"/>
+			<target ref="id31"/>
+			<label kind="synchronisation" x="-178" y="-153">SDVspeed?</label>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id30"/>
+			<label kind="guard" x="-212" y="8">no_scan == false</label>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-357" y="-136">SDV_speed &lt; 70 &amp;&amp;
+no_scan == false</label>
+			<label kind="assignment" x="-357" y="-102">SDV_speed+=10</label>
+			<nail x="-246" y="-136"/>
+			<nail x="-238" y="-93"/>
+		</transition>
+		<transition>
+			<source ref="id31"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-365" y="-76">SDV_speed &gt; 20 &amp;&amp;
+no_scan == false</label>
+			<label kind="assignment" x="-365" y="-43">SDV_speed-=10</label>
+			<nail x="-238" y="-17"/>
+			<nail x="-238" y="-68"/>
+		</transition>
+	</template>
+	<template>
+		<name x="5" y="5">EthicalDecController</name>
+		<declaration>void subcontroller(){
+    if (B_Injuries==T_Injuries &amp;&amp; B_Injuries &lt; S_Injuries) 
+    {
+        if (B_SDV_Damage &gt; T_SDV_Damage)
+            Action = 2;
+        else if (B_SDV_Damage &lt; T_SDV_Damage)
+            Action = 1;
+        else if (B_SDV_Damage == T_SDV_Damage)
+            Action = 4;
+    }
+    else if (B_Injuries==S_Injuries &amp;&amp; B_Injuries &lt; T_Injuries) 
+    {
+        if (B_SDV_Damage &gt; S_SDV_Damage)
+            Action = 3;
+        else if (B_SDV_Damage &lt; S_SDV_Damage)
+            Action = 1;
+        else if (B_SDV_Damage == S_SDV_Damage)
+            Action = 1;
+    }
+    else if (S_Injuries==T_Injuries &amp;&amp; S_Injuries &lt; B_Injuries) 
+    {
+        if (T_SDV_Damage &gt; S_SDV_Damage)
+            Action = 3;
+        else if (T_SDV_Damage &lt; S_SDV_Damage)
+            Action = 2;
+        else if (T_SDV_Damage == S_SDV_Damage)
+            Action = 2;
+    }
+    else if (S_Injuries==T_Injuries &amp;&amp; T_Injuries==B_Injuries) 
+    {
+        if (S_SDV_Damage &lt; T_SDV_Damage &amp;&amp; S_SDV_Damage &lt; B_SDV_Damage)
+            Action = 3;
+        else if (B_SDV_Damage &lt; T_SDV_Damage)
+            Action = 1;
+        else if (T_SDV_Damage &lt; B_SDV_Damage)
+            Action = 2;
+        else
+            Action = 4;
+    }
+}</declaration>
+		<location id="id34" x="246" y="-901">
+			<name x="263" y="-892">ND_Brake</name>
+		</location>
+		<location id="id35" x="408" y="-799">
+			<name x="398" y="-833">ND_Turn</name>
+		</location>
+		<location id="id36" x="-263" y="-833">
+			<name x="-297" y="-867">EthicalStart</name>
+		</location>
+		<location id="id37" x="-43" y="-833">
+			<name x="-94" y="-867">OutcomeCalculator</name>
+		</location>
+		<location id="id38" x="-263" y="-680">
+			<name x="-364" y="-705">LeastDamage</name>
+		</location>
+		<location id="id39" x="-425" y="-518">
+			<name x="-459" y="-510">TurnAction</name>
+		</location>
+		<location id="id40" x="-263" y="-510">
+			<name x="-331" y="-501">SharpTurnAction</name>
+		</location>
+		<location id="id41" x="-127" y="-527">
+			<name x="-161" y="-510">BrakeAction</name>
+		</location>
+		<location id="id42" x="246" y="-680">
+			<name x="85" y="-671">EthicalDecSubController</name>
+		</location>
+		<location id="id43" x="-263" y="-969">
+			<name x="-297" y="-960">Perception</name>
+		</location>
+		<location id="id44" x="246" y="-799">
+			<name x="76" y="-807">NonDeterministicAction</name>
+		</location>
+		<location id="id45" x="246" y="-544">
+			<name x="153" y="-552">ActionDone</name>
+		</location>
+		<init ref="id43"/>
+		<transition>
+			<source ref="id34"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="153" y="-969">VehicleSync!</label>
+			<nail x="246" y="-969"/>
+		</transition>
+		<transition>
+			<source ref="id35"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="426" y="-816">VehicleSync!</label>
+			<nail x="561" y="-799"/>
+			<nail x="561" y="-969"/>
+		</transition>
+		<transition>
+			<source ref="id44"/>
+			<target ref="id34"/>
+			<label kind="assignment" x="178" y="-850">Action = 1</label>
+		</transition>
+		<transition>
+			<source ref="id44"/>
+			<target ref="id35"/>
+			<label kind="assignment" x="280" y="-799">Action = 2</label>
+		</transition>
+		<transition>
+			<source ref="id45"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="459" y="-561">VehicleSync!</label>
+			<nail x="561" y="-544"/>
+			<nail x="561" y="-969"/>
+			<nail x="-246" y="-969"/>
+		</transition>
+		<transition>
+			<source ref="id41"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="-221" y="-459">VehicleSync!</label>
+			<nail x="-127" y="-442"/>
+			<nail x="-527" y="-442"/>
+			<nail x="-527" y="-969"/>
+		</transition>
+		<transition>
+			<source ref="id40"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="-527" y="-459">VehicleSync!</label>
+			<nail x="-263" y="-442"/>
+			<nail x="-527" y="-442"/>
+			<nail x="-527" y="-969"/>
+		</transition>
+		<transition>
+			<source ref="id39"/>
+			<target ref="id43"/>
+			<label kind="synchronisation" x="-527" y="-535">VehicleSync!</label>
+			<nail x="-527" y="-518"/>
+			<nail x="-527" y="-518"/>
+			<nail x="-527" y="-969"/>
+			<nail x="-527" y="-969"/>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id45"/>
+			<label kind="guard" x="161" y="-578">Action != 4</label>
+		</transition>
+		<transition>
+			<source ref="id42"/>
+			<target ref="id44"/>
+			<label kind="guard" x="161" y="-790">Action == 4</label>
+		</transition>
+		<transition>
+			<source ref="id43"/>
+			<target ref="id36"/>
+			<label kind="synchronisation" x="-348" y="-918">Emergency?</label>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id42"/>
+			<label kind="guard" x="-238" y="-756">(B_Injuries==T_Injuries &amp;&amp; B_Injuries &lt; S_Injuries) || 
+(B_Injuries==S_Injuries &amp;&amp; B_Injuries &lt; T_Injuries) || 
+(S_Injuries==T_Injuries &amp;&amp; S_Injuries &lt; B_Injuries) ||
+(S_Injuries==T_Injuries &amp;&amp; T_Injuries==B_Injuries)</label>
+			<label kind="assignment" x="-229" y="-680">subcontroller()</label>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id41"/>
+			<label kind="guard" x="-187" y="-638">B_Injuries&lt;T_Injuries &amp;&amp;
+B_Injuries&lt;S_Injuries</label>
+			<label kind="assignment" x="-162" y="-603">Action = 1</label>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id40"/>
+			<label kind="guard" x="-349" y="-570">S_Injuries&lt;B_Injuries &amp;&amp;
+S_Injuries&lt;T_Injuries</label>
+			<label kind="assignment" x="-348" y="-535">Action = 3</label>
+		</transition>
+		<transition>
+			<source ref="id38"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-451" y="-646">T_Injuries&lt;B_Injuries &amp;&amp;
+T_Injuries&lt;S_Injuries</label>
+			<label kind="assignment" x="-451" y="-603">Action = 2</label>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id38"/>
+			<label kind="guard" x="-400" y="-808">TurnDone==true &amp;&amp;
+BrakeDone==true &amp;&amp;
+SharpDone==true</label>
+		</transition>
+		<transition>
+			<source ref="id37"/>
+			<target ref="id36"/>
+			<label kind="synchronisation" x="-196" y="-807">OutcomeDone?</label>
+			<nail x="-153" y="-808"/>
+		</transition>
+		<transition>
+			<source ref="id36"/>
+			<target ref="id37"/>
+			<label kind="synchronisation" x="-196" y="-884">Outcome!</label>
+			<nail x="-153" y="-859"/>
+		</transition>
+	</template>
+	<template>
+		<name>OutcomeController</name>
+		<location id="id46" x="-493" y="-595">
+			<name x="-544" y="-629">OutcomeStart</name>
+		</location>
+		<location id="id47" x="-493" y="-450">
+			<name x="-484" y="-476">Action</name>
+		</location>
+		<location id="id48" x="-628" y="-246">
+			<name x="-646" y="-229">Sharp</name>
+		</location>
+		<location id="id49" x="-246" y="-425">
+			<name x="-263" y="-459">Turn</name>
+		</location>
+		<location id="id50" x="-425" y="-263">
+			<name x="-443" y="-246">Brake</name>
+		</location>
+		<init ref="id46"/>
+		<transition>
+			<source ref="id47"/>
+			<target ref="id46"/>
+			<label kind="guard" x="-680" y="-552">TurnDone==true &amp;&amp;
+BrakeDone==true &amp;&amp;
+SharpDone==true</label>
+			<label kind="synchronisation" x="-680" y="-569">OutcomeDone!</label>
+			<nail x="-552" y="-535"/>
+		</transition>
+		<transition>
+			<source ref="id48"/>
+			<target ref="id47"/>
+			<label kind="synchronisation" x="-671" y="-374">S_EndCalc?</label>
+			<label kind="assignment" x="-714" y="-357">SharpDone=true</label>
+			<nail x="-612" y="-348"/>
+		</transition>
+		<transition>
+			<source ref="id49"/>
+			<target ref="id47"/>
+			<label kind="synchronisation" x="-340" y="-476">T_EndCalc?</label>
+			<label kind="assignment" x="-357" y="-493">TurnDone=true</label>
+			<nail x="-348" y="-467"/>
+		</transition>
+		<transition>
+			<source ref="id50"/>
+			<target ref="id47"/>
+			<label kind="synchronisation" x="-408" y="-348">B_EndCalc?</label>
+			<label kind="assignment" x="-408" y="-331">BrakeDone=true</label>
+			<nail x="-399" y="-357"/>
+		</transition>
+		<transition>
+			<source ref="id47"/>
+			<target ref="id50"/>
+			<label kind="guard" x="-552" y="-365">BrakeDone==false</label>
+			<label kind="synchronisation" x="-493" y="-348">B_Calc!</label>
+		</transition>
+		<transition>
+			<source ref="id47"/>
+			<target ref="id49"/>
+			<label kind="guard" x="-408" y="-416">TurnDone==false</label>
+			<label kind="synchronisation" x="-374" y="-433">T_Calc!</label>
+		</transition>
+		<transition>
+			<source ref="id47"/>
+			<target ref="id48"/>
+			<label kind="guard" x="-603" y="-297">SharpDone==false</label>
+			<label kind="synchronisation" x="-603" y="-280">S_Calc!</label>
+			<label kind="assignment" x="-603" y="-263">S_SDV_Damage++</label>
+		</transition>
+		<transition>
+			<source ref="id46"/>
+			<target ref="id47"/>
+			<label kind="guard" x="-484" y="-561">TurnDone==false &amp;&amp;
+BrakeDone==false &amp;&amp;
+SharpDone==false</label>
+			<label kind="synchronisation" x="-484" y="-501">Outcome?</label>
+		</transition>
+	</template>
+	<template>
+		<name>OutcomeCalc</name>
+		<parameter>int &amp;Injuries, int &amp;SDV_Damage, chan &amp;Calc, chan &amp;EndCalc, int &amp;Pedestrians, int &amp;Pedestrian_dist, bool &amp;Object, int &amp;Object_dist, bool &amp;Object_resistance, bool &amp;Car, int &amp;Car_dist, int &amp;Car_stopdist, int &amp;Car_Npass</parameter>
+		<declaration>bool Ped_Done=0, Obj_Done=0, Car_Done=0;
+</declaration>
+		<location id="id51" x="-25" y="-425">
+			<name x="-51" y="-459">CalcStart</name>
+		</location>
+		<location id="id52" x="-25" y="-238">
+			<name x="-59" y="-212">Controller</name>
+		</location>
+		<location id="id53" x="-510" y="-238">
+			<name x="-561" y="-221">PedestrianCheck</name>
+		</location>
+		<location id="id54" x="493" y="-238">
+			<name x="476" y="-221">ObjectCheck</name>
+		</location>
+		<location id="id55" x="-178" y="17">
+			<name x="-229" y="25">CarCheck</name>
+		</location>
+		<location id="id56" x="289" y="-357">
+			<name x="272" y="-391">RigidnessCheck</name>
+		</location>
+		<location id="id57" x="263" y="-238">
+			<name x="204" y="-263">ColissionCheck</name>
+		</location>
+		<location id="id58" x="-25" y="17">
+			<name x="-93" y="34">ColissionCheckBack</name>
+		</location>
+		<init ref="id51"/>
+		<transition>
+			<source ref="id58"/>
+			<target ref="id52"/>
+			<label kind="guard" x="42" y="-59">(SDV_StopDist+
+Car_dist) &gt; 
+Car_stopdist</label>
+			<nail x="42" y="-34"/>
+		</transition>
+		<transition>
+			<source ref="id58"/>
+			<target ref="id55"/>
+			<label kind="guard" x="-161" y="51">(SDV_StopDist+
+Car_dist) &lt;=
+Car_stopdist</label>
+			<label kind="assignment" x="-170" y="110">SDV_Damage++</label>
+		</transition>
+		<transition>
+			<source ref="id57"/>
+			<target ref="id52"/>
+			<label kind="guard" x="221" y="-212">SDV_StopDist &lt;
+Object_dist</label>
+			<nail x="212" y="-195"/>
+		</transition>
+		<transition>
+			<source ref="id57"/>
+			<target ref="id54"/>
+			<label kind="guard" x="314" y="-280">SDV_StopDist &gt;=
+Object_dist</label>
+			<label kind="assignment" x="314" y="-238">SDV_Damage++</label>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id52"/>
+			<label kind="guard" x="-161" y="-331">Pedestrians == 0 &amp;&amp;
+Ped_Done == 0</label>
+			<label kind="assignment" x="-136" y="-297">Ped_Done=1</label>
+			<nail x="-85" y="-297"/>
+			<nail x="-102" y="-280"/>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id52"/>
+			<label kind="guard" x="34" y="-195">Object==false  &amp;&amp;
+Obj_Done == 0</label>
+			<label kind="assignment" x="34" y="-161">Obj_Done =1</label>
+			<nail x="34" y="-187"/>
+			<nail x="17" y="-170"/>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id52"/>
+			<label kind="guard" x="-119" y="-161">Car == false &amp;&amp;
+Car_Done==0</label>
+			<label kind="assignment" x="-119" y="-127">Car_Done=1</label>
+			<nail x="-51" y="-161"/>
+			<nail x="-76" y="-170"/>
+		</transition>
+		<transition>
+			<source ref="id55"/>
+			<target ref="id52"/>
+			<label kind="guard" x="-331" y="-93">(SDV_StopDist+Car_dist) - 
+Car_stopdist &lt;= DistDamage</label>
+			<label kind="assignment" x="-348" y="-51">Injuries += SDV_Npass + Car_Npass,
+SDV_Damage++</label>
+			<nail x="-246" y="-68"/>
+		</transition>
+		<transition>
+			<source ref="id56"/>
+			<target ref="id52"/>
+			<label kind="guard" x="102" y="-391">Object_resistance == true</label>
+			<label kind="assignment" x="102" y="-374">Injuries += SDV_Npass,
+SDV_Damage++</label>
+			<nail x="68" y="-340"/>
+		</transition>
+		<transition>
+			<source ref="id56"/>
+			<target ref="id52"/>
+			<label kind="guard" x="102" y="-323">Object_resistance == false</label>
+		</transition>
+		<transition>
+			<source ref="id55"/>
+			<target ref="id52"/>
+			<label kind="guard" x="-561" y="-85">(SDV_StopDist+Car_dist) - 
+Car_stopdist &gt; DistDamage</label>
+			<nail x="-416" y="17"/>
+			<nail x="-416" y="-68"/>
+		</transition>
+		<transition>
+			<source ref="id54"/>
+			<target ref="id56"/>
+			<label kind="guard" x="348" y="-323">Object_dist - SDV_StopDist  &lt;= DistDamage</label>
+		</transition>
+		<transition>
+			<source ref="id54"/>
+			<target ref="id52"/>
+			<label kind="guard" x="272" y="-127">Object_dist - SDV_StopDist  &gt; DistDamage</label>
+			<nail x="263" y="-119"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id52"/>
+			<label kind="guard" x="-510" y="-161">Pedestrian_dist &gt; SDV_StopDist</label>
+			<nail x="-289" y="-153"/>
+		</transition>
+		<transition>
+			<source ref="id53"/>
+			<target ref="id52"/>
+			<label kind="guard" x="-476" y="-348">Pedestrian_dist &lt;= SDV_StopDist</label>
+			<label kind="assignment" x="-476" y="-331">Injuries += Pedestrians,
+SDV_Damage++</label>
+			<nail x="-289" y="-314"/>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id51"/>
+			<label kind="guard" x="-161" y="-416">Obj_Done==1 &amp;&amp;
+Ped_Done==1 &amp;&amp;
+Car_Done==1</label>
+			<label kind="synchronisation" x="-136" y="-357">EndCalc!</label>
+			<nail x="-85" y="-340"/>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id58"/>
+			<label kind="guard" x="-76" y="-85">Car == true &amp;&amp;
+Car_Done == 0</label>
+			<label kind="assignment" x="-76" y="-51">Car_Done = 1</label>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id57"/>
+			<label kind="guard" x="93" y="-280">Object==true &amp;&amp;
+Obj_Done == 0</label>
+			<label kind="assignment" x="110" y="-246">Obj_Done=1</label>
+		</transition>
+		<transition>
+			<source ref="id51"/>
+			<target ref="id52"/>
+			<label kind="synchronisation" x="-25" y="-382">Calc?</label>
+			<label kind="assignment" x="-25" y="-365">Obj_Done=0,
+Ped_Done=0,
+Car_Done=0</label>
+		</transition>
+		<transition>
+			<source ref="id52"/>
+			<target ref="id53"/>
+			<label kind="guard" x="-331" y="-280">Pedestrians &gt; 0 &amp;&amp;
+Ped_Done == 0</label>
+			<label kind="assignment" x="-314" y="-238">Ped_Done=true</label>
+		</transition>
+	</template>
+	<template>
+		<name>Interface</name>
+		<location id="id59" x="0" y="-119">
+			<name x="-68" y="-153">VehicleInterfaceStart</name>
+		</location>
+		<location id="id60" x="0" y="17">
+			<name x="-34" y="25">ExecuteAction</name>
+		</location>
+		<location id="id61" x="195" y="-119">
+			<name x="170" y="-111">Proceed</name>
+		</location>
+		<location id="id62" x="0" y="263">
+			<name x="-77" y="280">VehicleDamageVerification</name>
+		</location>
+		<location id="id63" x="374" y="-119">
+			<name x="340" y="-102">SDV_speed</name>
+		</location>
+		<location id="id64" x="484" y="-119">
+			<name x="450" y="-102">SpeedSetState</name>
+		</location>
+		<init ref="id59"/>
+		<transition>
+			<source ref="id62"/>
+			<target ref="id59"/>
+			<label kind="synchronisation" x="-331" y="238">DamageVerification!</label>
+			<nail x="-348" y="263"/>
+			<nail x="-348" y="-119"/>
+		</transition>
+		<transition>
+			<source ref="id63"/>
+			<target ref="id64"/>
+			<label kind="synchronisation" x="391" y="-144">SpeedSet?</label>
+		</transition>
+		<transition>
+			<source ref="id64"/>
+			<target ref="id59"/>
+			<label kind="synchronisation" x="221" y="-212">perception!</label>
+			<nail x="408" y="-187"/>
+			<nail x="102" y="-187"/>
+		</transition>
+		<transition>
+			<source ref="id60"/>
+			<target ref="id62"/>
+			<label kind="guard" x="187" y="68">Action == 2</label>
+			<label kind="assignment" x="187" y="85">Injuries = T_Injuries,
+SDV_Damage = T_SDV_Damage</label>
+			<nail x="187" y="110"/>
+		</transition>
+		<transition>
+			<source ref="id60"/>
+			<target ref="id62"/>
+			<label kind="guard" x="-85" y="59">Action == 3</label>
+			<label kind="assignment" x="-85" y="76">Injuries = S_Injuries,
+SDV_Damage = S_SDV_Damage</label>
+		</transition>
+		<transition>
+			<source ref="id60"/>
+			<target ref="id62"/>
+			<label kind="guard" x="-306" y="85">Action == 1</label>
+			<label kind="assignment" x="-306" y="102">Injuries = B_Injuries,
+SDV_Damage = B_SDV_Damage</label>
+			<nail x="-187" y="110"/>
+		</transition>
+		<transition>
+			<source ref="id59"/>
+			<target ref="id61"/>
+			<label kind="synchronisation" x="76" y="-144">proceed?</label>
+			<label kind="assignment" x="76" y="-119">Action = 4</label>
+		</transition>
+		<transition>
+			<source ref="id59"/>
+			<target ref="id60"/>
+			<label kind="synchronisation" x="-85" y="-34">VehicleSync?</label>
+		</transition>
+		<transition>
+			<source ref="id61"/>
+			<target ref="id63"/>
+			<label kind="synchronisation" x="246" y="-144">SDVspeed!</label>
+		</transition>
+	</template>
+	<template>
+		<name>VehicleStatus</name>
+		<declaration>void resetValues(){
+    B_Injuries = 0;
+    T_Injuries = 0;
+    S_Injuries = 0;
+    Injuries = 0;
+    B_SDV_Damage = 0;
+    T_SDV_Damage = 0;
+    S_SDV_Damage = 0;
+    SDV_Damage = 0;
+    Action = 4;
+    TurnDone = false; 
+    SharpDone = false;
+    BrakeDone = false;
+}</declaration>
+		<location id="id65" x="-127" y="93">
+			<name x="-144" y="59">LogData</name>
+		</location>
+		<location id="id66" x="-136" y="-161">
+			<name x="-146" y="-195">Deadlock</name>
+		</location>
+		<location id="id67" x="-289" y="-25">
+			<name x="-365" y="-8">DamageCheck</name>
+			<committed/>
+		</location>
+		<location id="id68" x="-467" y="-25">
+			<name x="-518" y="-8">VehicleInterface</name>
+		</location>
+		<location id="id69" x="42" y="93">
+			<name x="8" y="110">SDV_Speed</name>
+		</location>
+		<location id="id70" x="163" y="93">
+			<name x="178" y="93">SpeedSetState</name>
+		</location>
+		<init ref="id68"/>
+		<transition>
+			<source ref="id69"/>
+			<target ref="id70"/>
+			<label kind="synchronisation" x="59" y="68">SpeedSet?</label>
+		</transition>
+		<transition>
+			<source ref="id70"/>
+			<target ref="id68"/>
+			<label kind="synchronisation" x="-425" y="119">perception!</label>
+			<label kind="assignment" x="-449" y="144">resetValues()</label>
+			<nail x="161" y="144"/>
+			<nail x="-467" y="144"/>
+		</transition>
+		<transition>
+			<source ref="id67"/>
+			<target ref="id65"/>
+			<label kind="guard" x="-297" y="34">Injuries == 0 &amp;&amp;
+SDV_Damage == 0</label>
+		</transition>
+		<transition>
+			<source ref="id67"/>
+			<target ref="id66"/>
+			<label kind="guard" x="-314" y="-170">Injuries &gt; 0 ||
+SDV_Damage &gt; 0</label>
+			<label kind="assignment" x="-314" y="-136">SDV_speed = 0,
+SDV_StopDist = 0</label>
+		</transition>
+		<transition>
+			<source ref="id68"/>
+			<target ref="id67"/>
+			<label kind="synchronisation" x="-450" y="-51">DamageVerification?</label>
+		</transition>
+		<transition>
+			<source ref="id65"/>
+			<target ref="id69"/>
+			<label kind="synchronisation" x="-76" y="68">SDVspeed!</label>
+		</transition>
+	</template>
+	<system>EthicalDec = EthicalDecController();
+OutcomeC = OutcomeController();
+PerceptionSys = Perception();
+V_Interface = Interface();
+Status = VehicleStatus();
+Speed = SDV_Speed();
+Sensorcontroller = SensorController();
+Scenarios = Scenario();
+
+//Sensor interface for each sensor
+B_Sensors = SensorInterface(B_Pedestrians, B_Pedestrian_dist, B_Object, B_Object_resistance, B_Object_dist, B_Car, B_Car_dist, 
+            B_Car_Npass, B_Car_speed, B_Car_StopDist, B_Scan, B_EndScan);
+
+S_Sensors = SensorInterface(S_Pedestrians, S_Pedestrian_dist, S_Object, S_Object_resistance, S_Object_dist, S_Car, S_Car_dist, 
+            S_Car_Npass, S_Car_speed, S_Car_StopDist, S_Scan, S_EndScan);
+
+T_Sensors = SensorInterface(T_Pedestrians, T_Pedestrian_dist, T_Object, T_Object_resistance, T_Object_dist, T_Car, T_Car_dist, 
+            T_Car_Npass, T_Car_speed, T_Car_StopDist, T_Scan, T_EndScan);
+
+//Outcome Calculator for each action
+B_OutcomeCalc = OutcomeCalc(B_Injuries, B_SDV_Damage, B_Calc, B_EndCalc, B_Pedestrians, B_Pedestrian_dist, B_Object, 
+                B_Object_dist, B_Object_resistance, B_Car, B_Car_dist, B_Car_StopDist, B_Car_Npass);
+S_OutcomeCalc = OutcomeCalc(S_Injuries, S_SDV_Damage, S_Calc, S_EndCalc, S_Pedestrians, S_Pedestrian_dist, S_Object, 
+                S_Object_dist, S_Object_resistance, S_Car, S_Car_dist, S_Car_StopDist, S_Car_Npass);
+T_OutcomeCalc = OutcomeCalc(T_Injuries, T_SDV_Damage, T_Calc, T_EndCalc, T_Pedestrians, T_Pedestrian_dist, T_Object, 
+                T_Object_dist, T_Object_resistance, T_Car, T_Car_dist, T_Car_StopDist, T_Car_Npass);
+
+
+system PerceptionSys, Speed, Sensorcontroller, B_Sensors, S_Sensors, T_Sensors, Scenarios, EthicalDec, OutcomeC, 
+       B_OutcomeCalc, S_OutcomeCalc, T_OutcomeCalc, V_Interface, Status;
+    </system>
+	<queries>
+		<query>
+			<formula>E&lt;&gt; 	(B_Injuries==T_Injuries &amp;&amp; B_Injuries == S_Injuries) &amp;&amp;
+	(B_SDV_Damage == S_SDV_Damage &amp;&amp; B_SDV_Damage == T_SDV_Damage) &amp;&amp;
+	Action == 3</formula>
+			<comment>[Safety Properties] If two outcomes lead to the same number of injuries and SDV Damage, it must not sharp turn (shouldn't be satisfied)</comment>
+		</query>
+		<query>
+			<formula>A&lt;&gt; 	(B_Injuries==T_Injuries &amp;&amp; B_Injuries &lt; S_Injuries) || 
+	(B_Injuries==S_Injuries &amp;&amp; B_Injuries &lt; T_Injuries) || 
+	(S_Injuries==T_Injuries &amp;&amp; S_Injuries &lt; B_Injuries) ||
+	(S_Injuries==T_Injuries &amp;&amp; T_Injuries==B_Injuries) &amp;&amp;
+	SDV_Damage &lt;= B_SDV_Damage &amp;&amp; SDV_Damage &lt;= S_SDV_Damage &amp;&amp; SDV_Damage &lt;= T_SDV_Damage</formula>
+			<comment>[Safety Properties] If two or more outcomes lead to the same number of injuries, it should pick the one that causes less damage to the SDV</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; SDV_speed == 0 &amp;&amp; Action == 4</formula>
+			<comment>[Implies] If no emergency situation is detected, it implies that the SDV's speed never reaches 0mph (shouldn't be satisfied)</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; ((SDV_StopDist+B_Car_dist) &lt;= B_Car_StopDist) &amp;&amp; Action == 1 &amp;&amp; SDV_Damage &gt; 0</formula>
+			<comment>[Eventually] If the brake action is chosen and the car behind doesn’t save stopping distance, it will eventually cause SDV damage</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; Injuries &gt; B_Injuries || Injuries &gt; S_Injuries || Injuries &gt; T_Injuries</formula>
+			<comment>[Eventually] It is possible to reach a state where the number of people saved is less than the number of people hurt. (shouldn’t be satisfied)</comment>
+		</query>
+		<query>
+			<formula>A[] Action == 1 || Action == 2 || Action == 3 || Action == 4</formula>
+			<comment>[Action Response] The only available actions are Braking, Turning, Sharp Turning and Proceeding, respectively</comment>
+		</query>
+		<query>
+			<formula>A[] Injuries &lt;= B_Injuries &amp;&amp; Injuries &lt;= S_Injuries &amp;&amp; Injuries &lt;= T_Injuries</formula>
+			<comment>[Safety Properties] No matter what the number of people harmed is less than the number of people saved</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (SDV_StopDist+B_Car_dist) - B_Car_StopDist &lt;= DistDamage &amp;&amp; B_Injuries &gt; 0</formula>
+			<comment>[Implies] If the distance of the car behind the SDV is less than the stopping distance of the SDV, it implies that there's at least 1 injury </comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (SDV_StopDist+B_Car_dist) &lt;= B_Car_StopDist &amp;&amp; B_SDV_Damage &gt; 0</formula>
+			<comment>[Implies] If the distance of the car behind the SDV is less than the stopping distance of the SDV, it implies that the SDV was damaged</comment>
+		</query>
+		<query>
+			<formula>Status.DamageCheck &amp;&amp; (Injuries &gt; 0 &amp;&amp; SDV_Damage &gt; 0) --&gt; SDV_speed == 0</formula>
+			<comment>[Safety Properties] Regardless of any decision, the SDV must come to a full stop if it receives damage and causes damage to a human</comment>
+		</query>
+		<query>
+			<formula>E[] B_Pedestrians == 0 &amp;&amp; not Status.Deadlock</formula>
+			<comment>[Reachability] The SDV must not go into a deadlock during a non-emergency scenario 
+
+(B_Pedestrians ==  0 determines that there is no emergency situation)</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; not deadlock &amp;&amp; Injuries == 0 &amp;&amp; SDV_Damage == 0</formula>
+			<comment>[Reachability] If no emergency situation prompts the SDV to stop, the system will loop without deadlock.</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; not deadlock &amp;&amp; (B_Pedestrians == 0 || Injuries == 0 || SDV_Damage == 0)</formula>
+			<comment>[Reachability] If no Injuries, Damage to the SDV or Pedestrians are detected, the model will not go into deadlock</comment>
+		</query>
+		<query>
+			<formula>A&lt;&gt; B_Pedestrians == 0 &amp;&amp; Action != 1 || Action != 2 || Action != 3</formula>
+			<comment>[Reachability] As long as no pedestrians are detected by the B sensors, it will never execute the emergency actions brake, turn and sharp turn</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; 	EthicalDec.EthicalDecSubController &amp;&amp; 
+	(B_Injuries==T_Injuries &amp;&amp; B_Injuries &lt; S_Injuries) || 
+	(B_Injuries==S_Injuries &amp;&amp; B_Injuries &lt; T_Injuries) || 
+	(S_Injuries==T_Injuries &amp;&amp; S_Injuries &lt; B_Injuries)</formula>
+			<comment>[Implies] If two actions lead to the same number of injuries, it implies the subcontroller will be executed</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; EthicalDec.BrakeAction &amp;&amp; (B_Injuries &lt; S_Injuries &amp;&amp; B_Injuries &lt; T_Injuries)</formula>
+			<comment>[Action Response] After the outcome calculator is executed, it verifies that that the Brake Action is executed when it leads to the least number of 
+		  injuries compared to the Brake and Turn actions</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; EthicalDec.SharpTurnAction &amp;&amp; (S_Injuries &lt; B_Injuries &amp;&amp; S_Injuries &lt; T_Injuries)</formula>
+			<comment>[Action Response] After the outcome calculator is executed, it verifies that that the Sharp Turn Action is executed when it leads to the least number of 
+		  injuries compared to the Sharp Turn and Turn actions</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; EthicalDec.TurnAction &amp;&amp; (T_Injuries &lt; B_Injuries &amp;&amp; T_Injuries &lt; S_Injuries)</formula>
+			<comment>[Action Response] After the outcome calculator is executed, it verifies that that the Turn Action is executed when it leads to the least number of 
+		  injuries compared to the Sharp Turn and Brake actions.</comment>
+		</query>
+		<query>
+			<formula>E&lt;&gt; PerceptionSys.EthicalDec &amp;&amp; B_Pedestrians &gt; 0</formula>
+			<comment>[Reachability] The Ethical Controller stage can only be reached when at least 1 pedestrian is detected in the B Sensors.</comment>
+		</query>
+	</queries>
+</nta>
